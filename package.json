@@ -1,0 +1,78 @@
+{
+  "name": "talking-prompt",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "tsx server/index.ts --dev",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx server/index.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "launch": "node scripts/launch.mjs",
+    "build:desktop": "npm run build && node scripts/build-desktop.mjs",
+    "desktop": "npm run build:desktop && electron .",
+    "dist:mac": "npm run build:desktop && electron-builder --mac dmg --publish never"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "6.1.2",
+    "lucide-react": "1.66.0",
+    "qrcode": "1.5.4",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "semver": "7.8.5",
+    "ws": "8.22.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/qrcode": "1.5.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/semver": "7.8.0",
+    "@types/ws": "8.18.2",
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  },
+  "description": "局域网同步提词器",
+  "author": "Tongpin contributors",
+  "main": "build-electron/main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zibochen6/talking-prompt.git"
+  },
+  "build": {
+    "appId": "io.github.zibochen6.tongpin",
+    "productName": "同频提词器",
+    "directories": {
+      "output": "release",
+      "buildResources": "build-resources"
+    },
+    "files": [
+      "dist/**",
+      "build-electron/**",
+      "package.json"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "artifactName": "Tongpin-${version}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build-resources/icon.icns",
+      "identity": null,
+      "hardenedRuntime": false,
+      "notarize": false,
+      "target": [
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "sign": false
+    }
+  }
+}
