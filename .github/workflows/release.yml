@@ -52,4 +52,9 @@ jobs:
         run: |
           cd release-assets
           sha256sum *.dmg > SHA256SUMS.txt
-          gh release create "$GITHUB_REF_NAME" ./*.dmg ./SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --verify-tag --title "同频 $GITHUB_REF_NAME" --notes "下载适合你的 Mac 芯片的 DMG。安装包暂未签名或公证，首次打开可能需要在系统设置中允许。更新请下载并手动安装；文稿保留在本机应用数据目录。"
+          notes=$(awk 'BEGIN{p=0} /^## /{p++; if(p>1) exit} p==1 && !/^## /{print}' "$GITHUB_WORKSPACE/CHANGELOG.md")
+          reminder="下载适合你的 Mac 芯片的 DMG（arm64 为 Apple 芯片，x64 为 Intel）。安装包暂未签名或公证，首次打开可能需要在系统设置中允许。更新请下载并手动安装；文稿保留在本机应用数据目录。"
+          if [ -z "$notes" ]; then notes="$reminder"; else notes="$notes
+
+$reminder"; fi
+          gh release create "$GITHUB_REF_NAME" ./*.dmg ./SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --verify-tag --title "同频 $GITHUB_REF_NAME" --notes "$notes"

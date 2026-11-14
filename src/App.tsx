@@ -6,16 +6,37 @@ import { usePrompt } from './usePrompt';
 import { Reader } from './Reader';
 import { FontSetting, SpeedSetting } from './ReadingSettings';
 const COMPACT_LANDSCAPE = '(max-height: 600px) and (orientation: landscape)';
-function useCompactLandscape() {
-  const [compact, setCompact] = useState(() => matchMedia(COMPACT_LANDSCAPE).matches);
+const NARROW = '(max-width: 700px)';
+function useMedia(query: string) {
+  const [matches, setMatches] = useState(() => matchMedia(query).matches);
   useEffect(() => {
-    const media = matchMedia(COMPACT_LANDSCAPE);
-    const update = () => setCompact(media.matches);
+    const media = matchMedia(query);
+    const update = () => setMatches(media.matches);
     update();
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
+  }, [query]);
+  return matches;
+}
+function useVisualViewport() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const apply = () => {
+      const viewport = window.visualViewport;
+      if (!viewport) return;
+      root.style.setProperty('--vv-height', `${viewport.height}px`);
+      root.style.setProperty('--vv-offset', `${viewport.offsetTop}px`);
+    };
+    apply();
+    window.visualViewport?.addEventListener('resize', apply);
+    window.visualViewport?.addEventListener('scroll', apply);
+    window.addEventListener('orientationchange', apply);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', apply);
+      window.visualViewport?.removeEventListener('scroll', apply);
+      window.removeEventListener('orientationchange', apply);
+    };
   }, []);
-  return compact;
 }
 function readStorage(key: string) { try { return localStorage.getItem(key); } catch { return null; } }
 function Dialog({ title, subtitle, onClose, children, className = '' }: { title: string; subtitle: string; onClose: () => void; children: ReactNode; className?: string }) {
@@ -96,7 +117,12 @@ export function App() {
   const [panel, setPanel] = useState<'editor' | 'connection' | 'settings' | null>(null);
   const closePanel = useCallback(() => setPanel(null), []);
   const [immersive, setImmersive] = useState(false);
-  const compactLandscape = useCompactLandscape();
+  const compactLandscape = useMedia(COMPACT_LANDSCAPE);
+  const narrow = useMedia(NARROW);
+  const readingFirst = compactLandscape || narrow;
+  useVisualViewport();
+  const scrubbing = useRef(false);
+  const scrubPosition = useRef<number | null>(null);
   const [fontSize, setFontSize] = useState(() => {
     const saved = Number(readStorage('tongpin-font'));
     return saved >= 24 && saved <= 120 ? saved : matchMedia('(max-width: 700px)').matches || compactLandscape ? 36 : 64;
@@ -104,7 +130,19 @@ export function App() {
   const length = useMemo(() => textLength(state.text), [state.text]);
   const progress = length ? clamp(position / length * 100, 0, 100) : 0;
   const playing = online && state.playing && position < length;
-  const seek = useCallback((value: number) => { prompt.send({ type: 'seek', position: value }); }, [prompt.send]);
+  const startProgress = () => { if (!online || !length) return; scrubbing.current = true; scrubPosition.current = prompt.currentPosition(); prompt.beginScrub(); };
+  const moveProgress = (value: number) => {
+    const next = value / 100 * length;
+    scrubPosition.current = next;
+    if (scrubbing.current) prompt.updateScrub(next);
+    else prompt.endScrub(next);
+  };
+  const finishProgress = () => {
+    if (!scrubbing.current) return;
+    scrubbing.current = false;
+    prompt.endScrub(scrubPosition.current ?? prompt.currentPosition());
+    scrubPosition.current = null;
+  };
   const reveal = useCallback(() => setImmersive(false), []);
   useEffect(() => { if (!toast) return; const timeout = setTimeout(() => setToast(''), 3500); return () => clearTimeout(timeout); }, [toast]);
   useEffect(() => { try { localStorage.setItem('tongpin-font', String(fontSize)); } catch { /* Local font is optional. */ } }, [fontSize]);
@@ -116,31 +154,32 @@ export function App() {
     };
     window.addEventListener('keydown', keyboard); return () => window.removeEventListener('keydown', keyboard);
   }, [playing, panel, prompt.send]);
-  return <main className={`app ${immersive ? 'immersive' : ''}`} data-compact-landscape={compactLandscape || undefined}>
+  return <main className={`app ${immersive ? 'immersive' : ''}`} data-compact-landscape={compactLandscape || undefined} data-reading-first={readingFirst || undefined}>
     <header className="topbar chrome"><a href="/" className="brand" aria-label="同频提词器首页"><span className="brand-mark"><i /><i /><i /></span><strong>同频<span>局域网提词器</span></strong></a>
       <nav aria-label="工具"><div className={`connection-status ${online ? '' : 'offline'}`} role="status"><span className="status-dot" />{online ? `${clients} 台设备在线` : '连接中…'}</div><span className="nav-divider" /><button className="secondary-button" aria-label="编辑文稿" onClick={() => setPanel('editor')}><FileText size={16} /><span>编辑文稿</span></button><button className="secondary-button" aria-label="连接设备" onClick={() => setPanel('connection')}><QrCode size={17} /><span>连接设备</span></button></nav>
     </header>
     <section className="stage" aria-label="提词器">
       <div className="stage-meta chrome"><div><span className={`live-dot ${playing ? 'active' : ''}`} />{playing ? '正在提词' : progress >= 100 && length ? '本次提词已结束' : '准备就绪'}<span className="meta-divider">/</span><span className="meta-hint">{length ? `${length.toLocaleString()} 字文稿` : '等待你的第一句话'}</span></div><div className="remaining"><span>剩余</span><time>{formatTime((length - position) / state.speed * 60)}</time></div></div>
-      <Reader text={state.text} fontSize={fontSize} online={online} currentPosition={prompt.currentPosition} seek={seek} immersive={immersive} reveal={reveal} compactLandscape={compactLandscape} />
+      <Reader text={state.text} fontSize={fontSize} online={online} currentPosition={prompt.currentPosition} beginScrub={prompt.beginScrub} updateScrub={prompt.updateScrub} endScrub={prompt.endScrub} immersive={immersive} reveal={reveal} compactLandscape={compactLandscape} readingFirst={readingFirst} />
       <div className="stage-bottom chrome"><span>专注表达，其他交给同频。</span><button className="text-button" onClick={() => setImmersive(true)}><Expand size={15} />沉浸阅读</button></div>
     </section>
     <footer className="control-dock chrome">
-      <div className="progress-row"><label htmlFor="progress">阅读进度</label><input id="progress" aria-label="阅读进度" type="range" min="0" max="100" step="0.1" value={progress} disabled={!online || !length} style={{ '--fill': `${progress}%` } as React.CSSProperties} onChange={event => seek(Number(event.target.value) / 100 * length)} /><output>{Math.floor(progress)}<span>%</span></output></div>
+      <div className="progress-row"><label htmlFor="progress">阅读进度</label><input id="progress" aria-label="阅读进度" type="range" min="0" max="100" step="0.1" value={progress} disabled={!online || !length} style={{ '--fill': `${progress}%` } as React.CSSProperties} onPointerDown={startProgress} onChange={event => moveProgress(Number(event.target.value))} onPointerUp={finishProgress} onPointerCancel={finishProgress} /><output>{Math.floor(progress)}<span>%</span></output></div>
       <div className="controls-row"><div className="transport"><button className="icon-button reset-button" aria-label="回到开头" title="回到开头" disabled={!online} onClick={() => prompt.send({ type: 'reset' })}><RotateCcw size={20} /></button><button className="play-button" aria-label={playing ? '暂停提词' : '开始提词'} disabled={!online || !state.text.trim()} onClick={() => prompt.send({ type: playing ? 'pause' : 'play' })}>{playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}<span>{playing ? '暂停提词' : '开始提词'}</span><kbd>空格</kbd></button></div>
         <SpeedSetting id="speed" speed={state.speed} online={online} onChange={speed => prompt.send({ type: 'speed', speed })} />
         <FontSetting id="font" fontSize={fontSize} onChange={setFontSize} />
       </div>
     </footer>
     <div className="page-note chrome"><span><Wifi size={12} />{online ? '本地连接 · 实时同步' : '连接已断开 · 阅读已暂停，正在重连'}</span><span>你的文字，只留在你的设备里。</span></div>
-    {compactLandscape && <nav className="landscape-toolbar chrome" aria-label="横屏提词控制">
+    {readingFirst && <nav className="landscape-toolbar chrome" aria-label={compactLandscape ? '横屏提词控制' : '提词控制'}>
+      <span className={`toolbar-status ${online ? '' : 'offline'}`} role="status"><span className="status-dot" />{online ? '' : '重连'}</span>
       <button className="landscape-icon-button" aria-label="回到开头" disabled={!online} onClick={() => prompt.send({ type: 'reset' })}><RotateCcw size={19} /></button>
       <button className="landscape-play" aria-label={playing ? '暂停提词' : '开始提词'} disabled={!online || !state.text.trim()} onClick={() => prompt.send({ type: playing ? 'pause' : 'play' })}>
         {playing ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}<span>{playing ? '暂停' : '播放'}</span>
       </button>
       <div className="landscape-progress"><input id="landscape-progress" aria-label="阅读进度" type="range" min="0" max="100" step="0.1" value={progress} disabled={!online || !length}
-        style={{ '--fill': `${progress}%` } as React.CSSProperties} onChange={event => seek(Number(event.target.value) / 100 * length)} /><output>{Math.floor(progress)}%</output></div>
-      <button className="landscape-settings-button" aria-label="阅读设置" aria-haspopup="dialog" onClick={() => setPanel('settings')}><SlidersHorizontal size={19} /><span>{state.speed} 字/分</span></button>
+        style={{ '--fill': `${progress}%` } as React.CSSProperties} onPointerDown={startProgress} onChange={event => moveProgress(Number(event.target.value))} onPointerUp={finishProgress} onPointerCancel={finishProgress} /><output>{Math.floor(progress)}%</output></div>
+      <button className="landscape-settings-button" aria-label="阅读设置" aria-haspopup="dialog" onClick={() => setPanel('settings')}><SlidersHorizontal size={19} /><span className="settings-speed">{state.speed} 字/分</span><span className="settings-label">设置</span></button>
       <button className="landscape-icon-button" aria-label="沉浸阅读" onClick={() => setImmersive(true)}><Expand size={19} /></button>
     </nav>}
     {immersive && <button className="immersive-exit" onClick={reveal} aria-label="退出沉浸阅读"><Maximize2 size={16} /><span>退出沉浸</span></button>}
