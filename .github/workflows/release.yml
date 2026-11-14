@@ -22,8 +22,30 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run build:desktop
+      # macos-15 runners are arm64. `npm install --os darwin --cpu x64` still
+      # rejects a directly requested package with EBADPLATFORM, because that
+      # check ignores the override. `npm pack` downloads the tarball anyway.
+      # `--force` is not used: it would also install every other optional
+      # native package in the tree. prepare-voice-runtime then keeps only
+      # sherpa-onnx-darwin-$SHERPA_ARCH for the DMG.
       - name: Install the recognizer for this Mac chip
-        run: npm install --no-save --no-audit --no-fund sherpa-onnx-darwin-${{ matrix.arch }}@2.0.1
+        env:
+          SHERPA_ARCH: ${{ matrix.arch }}
+        run: |
+          package="sherpa-onnx-darwin-${SHERPA_ARCH}"
+          tarball="$(npm pack "${package}@2.0.1" --silent --pack-destination "${RUNNER_TEMP}")"
+          destination="node_modules/${package}"
+          rm -rf "${destination}"
+          mkdir -p "${destination}"
+          tar -xzf "${RUNNER_TEMP}/${tarball}" -C "${destination}" --strip-components=1
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const arch = process.env.SHERPA_ARCH;
+            const pkg = JSON.parse(readFileSync(`node_modules/sherpa-onnx-darwin-${arch}/package.json`, "utf8"));
+            if (!pkg.os?.includes("darwin") || !pkg.cpu?.includes(arch)) {
+              throw new Error(`recognizer package does not match darwin ${arch}`);
+            }
+          '
       - run: node scripts/fetch-voice-model.mjs
       - run: node scripts/prepare-voice-runtime.mjs
         env:
