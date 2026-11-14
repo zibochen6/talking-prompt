@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import type { FollowMode } from '../shared/state';
 
 export function SpeedSetting({ id, speed, online, onChange }: {
   id: string; speed: number; online: boolean; onChange: (speed: number) => void;
@@ -10,6 +11,19 @@ export function SpeedSetting({ id, speed, online, onChange }: {
         style={{ '--fill': `${(speed - 30) / 570 * 100}%` } as CSSProperties}
         onChange={event => onChange(Number(event.target.value))} />
       <span>快</span>
+    </div>
+  </div>;
+}
+
+export function FollowSwitch({ id, mode, online, onChange }: {
+  id: string; mode: FollowMode; online: boolean; onChange: (mode: FollowMode) => void;
+}) {
+  const label = `${id}-label`;
+  return <div className="setting follow-setting">
+    <div className="setting-title"><span id={label}>跟随方式</span></div>
+    <div id={id} className="follow-switch" role="radiogroup" aria-labelledby={label}>
+      <button type="button" role="radio" aria-checked={mode === 'timed'} disabled={!online} onClick={() => { if (mode !== 'timed') onChange('timed'); }}>匀速滚动</button>
+      <button type="button" role="radio" aria-checked={mode === 'voice'} disabled={!online} onClick={() => { if (mode !== 'voice') onChange('voice'); }}>声控跟随</button>
     </div>
   </div>;
 }

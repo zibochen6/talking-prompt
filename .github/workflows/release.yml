@@ -22,6 +22,12 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run build:desktop
+      - name: Install the recognizer for this Mac chip
+        run: npm install --no-save --no-audit --no-fund sherpa-onnx-darwin-${{ matrix.arch }}@2.0.1
+      - run: node scripts/fetch-voice-model.mjs
+      - run: node scripts/prepare-voice-runtime.mjs
+        env:
+          PROMPT_SHERPA_ARCH: ${{ matrix.arch }}
       - run: npx electron-builder --mac dmg --${{ matrix.arch }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

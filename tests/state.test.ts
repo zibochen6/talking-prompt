@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyCommand, initialState, positionAt, settled, restoreState, textLength } from '../shared/state.ts';
+import { applyCommand, initialState, positionAt, settled, restoreState, setFollowMode, textLength } from '../shared/state.ts';
 
 test('统一时钟推进；变速不改变当前位置，暂停后不再推进', () => {
   let state = initialState(1000);
@@ -44,5 +44,17 @@ test('空文稿、数值异常、越界和过长文稿', () => {
 test('服务重启恢复位置和速度，但绝不自行播放；错误保存数据被拒绝', () => {
   const restored = restoreState({ text: '恢复内容', position: 2, speed: 240, playing: true }, 1000);
   assert.equal(restored.position, 2); assert.equal(restored.speed, 240); assert.equal(restored.playing, false);
+  assert.equal(restored.mode, 'timed');
   assert.throws(() => restoreState({ text: '坏数据', position: null, speed: 90 }, 1000));
+});
+test('声控模式不随时间推进，重启后保留模式但保持暂停', () => {
+  let state = setFollowMode(applyCommand(initialState(0), { type: 'apply', text: '一二三四五', docRevision: 0 }, 0), 'voice', 10);
+  state = applyCommand(state, { type: 'play', docRevision: state.docRevision }, 20);
+  assert.equal(positionAt(state, 20_000), 0);
+  assert.equal(settled(state, 20_000).playing, true);
+  const saved = restoreState({ ...state, playing: true, voiceStatus: 'listening' }, 30_000);
+  assert.equal(saved.mode, 'voice');
+  assert.equal(saved.playing, false);
+  assert.equal(saved.voiceStatus, 'idle');
+  assert.equal(saved.voiceEpoch, state.voiceEpoch);
 });

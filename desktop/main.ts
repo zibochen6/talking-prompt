@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, Menu, Notification, shell } from 'electron';
-import { resolve } from 'node:path';
+import { app, BrowserWindow, dialog, Menu, Notification, session, shell } from 'electron';
+import { join, resolve } from 'node:path';
 import { createPromptServer } from '../server/app.ts';
 import { defaultDataDir, legacyDataDirs, prepareDataDir, withReservedPort } from '../server/storage.ts';
 import { checkLatestRelease, type UpdateResult } from './updates.ts';
+import { startVoiceHost } from './voice-host.ts';
 
 const PORT = 3210;
 let window: BrowserWindow | undefined;
@@ -11,6 +12,7 @@ let shuttingDown = false;
 let updateTimer: NodeJS.Timeout | undefined;
 let checking = false;
 let available: Extract<UpdateResult, { kind: 'available' }> | undefined;
+let voice: ReturnType<typeof startVoiceHost> | undefined;
 
 function menu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -48,11 +50,12 @@ async function checkUpdates(manual: boolean) {
 }
 function createWindow() {
   window = new BrowserWindow({ width: 1280, height: 860, minWidth: 700, minHeight: 500, title: '同频 · 局域网提词器', backgroundColor: '#000000', show: false,
-    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } });
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, preload: join(__dirname, 'preload.cjs') } });
   window.once('ready-to-show', () => window?.show());
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => { if (!url.startsWith(`http://localhost:${PORT}/`)) event.preventDefault(); });
   void window.loadURL(`http://localhost:${PORT}/`);
+  voice?.attachWindow(window);
   window.on('closed', () => { window = undefined; });
 }
 const hasLock = app.requestSingleInstanceLock();
@@ -67,6 +70,11 @@ else {
       const projectRoot = app.isPackaged ? undefined : app.getAppPath();
       await withReservedPort(PORT, () => prepareDataDir(dataDir, process.env.PROMPT_DATA_DIR ? [] : legacyDataDirs(projectRoot)));
       server = createPromptServer({ dataDir, distDir: resolve(app.getAppPath(), 'dist') });
+      voice = startVoiceHost(server, app.getAppPath());
+      session.defaultSession.setPermissionCheckHandler((_webContents, permission) => permission === 'media');
+      session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+        callback(permission === 'media');
+      });
       await new Promise<void>((resolveListen, reject) => { server!.server.once('error', reject); server!.server.listen(PORT, '0.0.0.0', () => resolveListen()); });
       menu(); createWindow();
       if (app.isPackaged && !process.env.PROMPT_DISABLE_UPDATE_CHECK) {
@@ -86,6 +94,7 @@ else {
     if (shuttingDown || !server) return;
     event.preventDefault(); shuttingDown = true;
     if (updateTimer) clearInterval(updateTimer);
+    voice?.close(); voice = undefined;
     void server.close().finally(() => { server = undefined; app.exit(0); });
   });
 }

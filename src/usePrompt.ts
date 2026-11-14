@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { initialState, positionAt, textLength, type Command, type PromptState } from '../shared/state';
+import { initialState, isVoiceStatus, positionAt, textLength, type Command, type PromptState } from '../shared/state';
 import { foldRemote, type ScrubHold } from './remote-follow';
+import { initialGlide, stepVoiceGlide, type VoiceGlide } from './voice-glide';
 type WithoutRevision<T> = T extends unknown ? Omit<T, 'docRevision'> : never;
 export type InputCommand = WithoutRevision<Command>;
 export function usePrompt(notify: (message: string) => void) {
@@ -19,7 +20,20 @@ export function usePrompt(notify: (message: string) => void) {
   const hold = useRef<ScrubHold | null>(null);
   const holdEndedAt = useRef<number | null>(null);
   const lastSeekSent = useRef(0);
-  const currentPosition = useCallback(() => connected.current ? positionAt(snapshot.current, performance.now() + offset.current, length.current) : frozen.current, []);
+  const glide = useRef<VoiceGlide>(initialGlide());
+  const currentPosition = useCallback(() => {
+    if (!connected.current) return frozen.current;
+    const state = snapshot.current;
+    if (state.mode !== 'voice') return positionAt(state, performance.now() + offset.current, length.current);
+    const stepped = stepVoiceGlide(glide.current, {
+      target: positionAt(state, 0, length.current),
+      playing: state.playing && !hold.current,
+      epoch: state.voiceEpoch,
+      now: performance.now(),
+    });
+    glide.current = stepped.glide;
+    return stepped.position;
+  }, []);
   const clearHold = () => { hold.current = null; holdEndedAt.current = null; };
   const place = useCallback((position: number, active: boolean) => {
     const now = performance.now() + offset.current;
@@ -91,7 +105,10 @@ export function usePrompt(notify: (message: string) => void) {
           }
           const next: PromptState = message.type === 'state' ? message.state : {
             ...snapshot.current, position: message.position, playing: message.playing, speed: message.speed,
-            updatedAt: message.updatedAt, revision: message.revision, docRevision: message.docRevision
+            updatedAt: message.updatedAt, revision: message.revision, docRevision: message.docRevision,
+            mode: message.mode === 'voice' || message.mode === 'timed' ? message.mode : snapshot.current.mode,
+            voiceEpoch: typeof message.voiceEpoch === 'number' ? message.voiceEpoch : snapshot.current.voiceEpoch,
+            voiceStatus: isVoiceStatus(message.voiceStatus) ? message.voiceStatus : snapshot.current.voiceStatus,
           };
           const age = hold.current && !hold.current.active && holdEndedAt.current !== null ? performance.now() - holdEndedAt.current : null;
           const folded = foldRemote(snapshot.current, next, hold.current, performance.now() + offset.current, age);
