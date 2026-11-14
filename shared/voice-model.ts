@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 export const VOICE_MODEL_DIR_NAME = 'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20';
 
@@ -23,18 +23,21 @@ function firstFile(directory: string, names: string[]) {
   return '';
 }
 
+function modelDirectories(candidate: string) {
+  if (basename(candidate) === VOICE_MODEL_DIR_NAME) return [candidate];
+  return [join(candidate, VOICE_MODEL_DIR_NAME), join(candidate, 'models', VOICE_MODEL_DIR_NAME), join(candidate, '.qa', 'model', VOICE_MODEL_DIR_NAME)];
+}
+
 /** Prefer the int8 Zipformer files. A directory may be the model folder or its parent. */
 export function resolveVoiceModel(candidates: Array<string | undefined>): VoiceModelFiles | null {
-  const seen = new Set<string>();
+  const seenCandidates = new Set<string>();
+  const seenDirectories = new Set<string>();
   for (const candidate of candidates) {
-    if (!candidate || seen.has(candidate)) continue;
-    seen.add(candidate);
-    const directories = candidate.endsWith(VOICE_MODEL_DIR_NAME)
-      ? [candidate]
-      : [join(candidate, VOICE_MODEL_DIR_NAME), join(candidate, 'models', VOICE_MODEL_DIR_NAME), join(candidate, '.qa', 'model', VOICE_MODEL_DIR_NAME)];
-    for (const directory of directories) {
-      if (seen.has(directory)) continue;
-      seen.add(directory);
+    if (!candidate || seenCandidates.has(candidate)) continue;
+    seenCandidates.add(candidate);
+    for (const directory of modelDirectories(candidate)) {
+      if (seenDirectories.has(directory)) continue;
+      seenDirectories.add(directory);
       const encoder = firstFile(directory, ENCODER);
       const decoder = firstFile(directory, DECODER);
       const joiner = firstFile(directory, JOINER);

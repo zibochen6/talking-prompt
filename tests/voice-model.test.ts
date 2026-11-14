@@ -19,5 +19,9 @@ test('优先使用 int8 模型，也接受放在 .qa 或 models 下的目录', a
   assert.match(found.decoder, /decoder-epoch-99-avg-1\.onnx$/);
   assert.match(found.joiner, /int8\.onnx$/);
   assert.equal(resolveVoiceModel([join(root, 'missing')]), null);
+  const direct = resolveVoiceModel([`${qa}/`]);
+  assert.ok(direct);
+  assert.equal(direct.directory, `${qa}/`);
+  assert.match(direct.encoder, /int8\.onnx$/);
   await rm(root, { recursive: true, force: true });
 });
