@@ -2,6 +2,9 @@ node_modules/
 dist/
 .local-data/
 .qa/
+models/**/*.onnx
+models/**/*.partial
+models/**/tokens.txt
 *.log
 .DS_Store
 build-electron/

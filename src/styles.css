@@ -127,3 +127,13 @@ button, .landscape-play, .landscape-icon-button, .landscape-settings-button { to
 .app[data-reading-first] .dialog { max-height: calc(var(--vv-height, 100dvh) - 16px); }
 .app[data-reading-first] .toast { bottom: calc(72px + env(safe-area-inset-bottom)); }
 .app[data-reading-first] .immersive-exit { top: max(8px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
+.follow-setting { flex: none; width: 220px; }
+.follow-switch { display: flex; gap: 8px; }
+.follow-switch button { flex: 1; min-height: 40px; padding: 0 10px; border: 1px solid #30342f; border-radius: 8px; color: #c1c7bf; font-size: 13px; }
+.follow-switch button[aria-checked="true"] { background: var(--accent); color: #1a2612; border-color: transparent; font-weight: 600; }
+.follow-switch button[aria-checked="true"]:disabled { opacity: 1; }
+.follow-note { margin: 8px 0 20px; color: #829078; font-size: 12px; line-height: 1.6; }
+.reading-settings-dialog .follow-setting { width: auto; }
+.reading-settings-dialog .follow-switch button { min-height: 44px; }
+.controls-row { flex-wrap: wrap; }
+@media(max-width: 1100px) { .follow-setting { width: 100%; } .controls-row .follow-setting { order: 3; } }

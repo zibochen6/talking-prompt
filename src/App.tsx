@@ -4,7 +4,9 @@ import QRCode from 'qrcode';
 import { clamp, MAX_TEXT_LENGTH, textLength } from '../shared/state';
 import { usePrompt } from './usePrompt';
 import { Reader } from './Reader';
-import { FontSetting, SpeedSetting } from './ReadingSettings';
+import { FollowSwitch, FontSetting, SpeedSetting } from './ReadingSettings';
+import { useDesktopCapture } from './voice-capture';
+import { voiceStatusLabel } from './voice-status';
 const COMPACT_LANDSCAPE = '(max-height: 600px) and (orientation: landscape)';
 const NARROW = '(max-width: 700px)';
 function useMedia(query: string) {
@@ -113,6 +115,7 @@ export function App() {
   const [toast, setToast] = useState('');
   const notify = useCallback((message: string) => setToast(message), []);
   const prompt = usePrompt(notify);
+  useDesktopCapture();
   const { state, online, position, clients } = prompt;
   const [panel, setPanel] = useState<'editor' | 'connection' | 'settings' | null>(null);
   const closePanel = useCallback(() => setPanel(null), []);
@@ -130,6 +133,8 @@ export function App() {
   const length = useMemo(() => textLength(state.text), [state.text]);
   const progress = length ? clamp(position / length * 100, 0, 100) : 0;
   const playing = online && state.playing && position < length;
+  const voiceLabel = state.mode === 'voice' ? voiceStatusLabel(state.voiceStatus, state.playing) : '';
+  const chooseMode = (mode: 'timed' | 'voice') => { prompt.send({ type: 'preferMode', mode }); };
   const startProgress = () => { if (!online || !length) return; scrubbing.current = true; scrubPosition.current = prompt.currentPosition(); prompt.beginScrub(); };
   const moveProgress = (value: number) => {
     const next = value / 100 * length;
@@ -159,18 +164,19 @@ export function App() {
       <nav aria-label="工具"><div className={`connection-status ${online ? '' : 'offline'}`} role="status"><span className="status-dot" />{online ? `${clients} 台设备在线` : '连接中…'}</div><span className="nav-divider" /><button className="secondary-button" aria-label="编辑文稿" onClick={() => setPanel('editor')}><FileText size={16} /><span>编辑文稿</span></button><button className="secondary-button" aria-label="连接设备" onClick={() => setPanel('connection')}><QrCode size={17} /><span>连接设备</span></button></nav>
     </header>
     <section className="stage" aria-label="提词器">
-      <div className="stage-meta chrome"><div><span className={`live-dot ${playing ? 'active' : ''}`} />{playing ? '正在提词' : progress >= 100 && length ? '本次提词已结束' : '准备就绪'}<span className="meta-divider">/</span><span className="meta-hint">{length ? `${length.toLocaleString()} 字文稿` : '等待你的第一句话'}</span></div><div className="remaining"><span>剩余</span><time>{formatTime((length - position) / state.speed * 60)}</time></div></div>
+      <div className="stage-meta chrome"><div><span className={`live-dot ${playing ? 'active' : ''}`} />{voiceLabel || (playing ? '正在提词' : progress >= 100 && length ? '本次提词已结束' : '准备就绪')}<span className="meta-divider">/</span><span className="meta-hint">{length ? `${length.toLocaleString()} 字文稿` : '等待你的第一句话'}</span></div><div className="remaining">{state.mode === 'voice' ? <span>跟随朗读</span> : <><span>剩余</span><time>{formatTime((length - position) / state.speed * 60)}</time></>}</div></div>
       <Reader text={state.text} fontSize={fontSize} online={online} currentPosition={prompt.currentPosition} beginScrub={prompt.beginScrub} updateScrub={prompt.updateScrub} endScrub={prompt.endScrub} immersive={immersive} reveal={reveal} compactLandscape={compactLandscape} readingFirst={readingFirst} />
       <div className="stage-bottom chrome"><span>专注表达，其他交给同频。</span><button className="text-button" onClick={() => setImmersive(true)}><Expand size={15} />沉浸阅读</button></div>
     </section>
     <footer className="control-dock chrome">
       <div className="progress-row"><label htmlFor="progress">阅读进度</label><input id="progress" aria-label="阅读进度" type="range" min="0" max="100" step="0.1" value={progress} disabled={!online || !length} style={{ '--fill': `${progress}%` } as React.CSSProperties} onPointerDown={startProgress} onChange={event => moveProgress(Number(event.target.value))} onPointerUp={finishProgress} onPointerCancel={finishProgress} /><output>{Math.floor(progress)}<span>%</span></output></div>
       <div className="controls-row"><div className="transport"><button className="icon-button reset-button" aria-label="回到开头" title="回到开头" disabled={!online} onClick={() => prompt.send({ type: 'reset' })}><RotateCcw size={20} /></button><button className="play-button" aria-label={playing ? '暂停提词' : '开始提词'} disabled={!online || !state.text.trim()} onClick={() => prompt.send({ type: playing ? 'pause' : 'play' })}>{playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}<span>{playing ? '暂停提词' : '开始提词'}</span><kbd>空格</kbd></button></div>
+        <FollowSwitch id="dock-follow" mode={state.mode} online={online} onChange={chooseMode} />
         <SpeedSetting id="speed" speed={state.speed} online={online} onChange={speed => prompt.send({ type: 'speed', speed })} />
         <FontSetting id="font" fontSize={fontSize} onChange={setFontSize} />
       </div>
     </footer>
-    <div className="page-note chrome"><span><Wifi size={12} />{online ? '本地连接 · 实时同步' : '连接已断开 · 阅读已暂停，正在重连'}</span><span>你的文字，只留在你的设备里。</span></div>
+    <div className="page-note chrome"><span><Wifi size={12} />{online ? '本地连接 · 实时同步' : '连接已断开 · 阅读已暂停，正在重连'}</span><span>{state.mode === 'voice' ? '声音只在 Mac 上识别，手机只同步文字位置。' : '你的文字，只留在你的设备里。'}</span></div>
     {readingFirst && <nav className="landscape-toolbar chrome" aria-label={compactLandscape ? '横屏提词控制' : '提词控制'}>
       <span className={`toolbar-status ${online ? '' : 'offline'}`} role="status"><span className="status-dot" />{online ? '' : '重连'}</span>
       <button className="landscape-icon-button" aria-label="回到开头" disabled={!online} onClick={() => prompt.send({ type: 'reset' })}><RotateCcw size={19} /></button>
@@ -179,13 +185,15 @@ export function App() {
       </button>
       <div className="landscape-progress"><input id="landscape-progress" aria-label="阅读进度" type="range" min="0" max="100" step="0.1" value={progress} disabled={!online || !length}
         style={{ '--fill': `${progress}%` } as React.CSSProperties} onPointerDown={startProgress} onChange={event => moveProgress(Number(event.target.value))} onPointerUp={finishProgress} onPointerCancel={finishProgress} /><output>{Math.floor(progress)}%</output></div>
-      <button className="landscape-settings-button" aria-label="阅读设置" aria-haspopup="dialog" onClick={() => setPanel('settings')}><SlidersHorizontal size={19} /><span className="settings-speed">{state.speed} 字/分</span><span className="settings-label">设置</span></button>
+      <button className="landscape-settings-button" aria-label="阅读设置" aria-haspopup="dialog" onClick={() => setPanel('settings')}><SlidersHorizontal size={19} /><span className="settings-speed">{state.mode === 'voice' ? '声控' : `${state.speed} 字/分`}</span><span className="settings-label">设置</span></button>
       <button className="landscape-icon-button" aria-label="沉浸阅读" onClick={() => setImmersive(true)}><Expand size={19} /></button>
     </nav>}
     {immersive && <button className="immersive-exit" onClick={reveal} aria-label="退出沉浸阅读"><Maximize2 size={16} /><span>退出沉浸</span></button>}
     {(!online || prompt.warning) && <div className="connection-banner" role="status">{prompt.warning || '正在连接 Mac…连接恢复后将自动同步阅读位置。'}</div>}
     {panel === 'connection' && <Connection onClose={closePanel} notify={notify} />}
-    {panel === 'settings' && <Dialog title="阅读设置" subtitle="速度多端同步，字号仅调整此设备。" onClose={closePanel} className="reading-settings-dialog">
+    {panel === 'settings' && <Dialog title="阅读设置" subtitle="速度多端同步，字号仅调整此设备。声控跟随使用 Mac 麦克风。" onClose={closePanel} className="reading-settings-dialog">
+      <FollowSwitch id="reading-follow" mode={state.mode} online={online} onChange={chooseMode} />
+      <p className="follow-note" role="status">{voiceLabel || '匀速滚动按设定的速度前进。'} 声音只在 Mac 上识别，手机不采集麦克风。</p>
       <div className="reading-settings-grid">
         <SpeedSetting id="reading-speed" speed={state.speed} online={online} onChange={speed => prompt.send({ type: 'speed', speed })} />
         <FontSetting id="reading-font" fontSize={fontSize} onChange={setFontSize} />

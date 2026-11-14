@@ -36,9 +36,18 @@ export function foldRemote(
       && !remote.playing
       && Math.abs(remote.position - hold.position) <= ACK_EPSILON;
     if (acked) return { next: remote, hold: null };
-    return { next: { ...local, speed: remote.speed, playing: false }, hold };
+    return {
+      next: { ...local, speed: remote.speed, playing: false, mode: remote.mode, voiceEpoch: remote.voiceEpoch, voiceStatus: remote.voiceStatus },
+      hold,
+    };
   }
   if (remote.docRevision !== local.docRevision || remote.text !== local.text) return { next: remote, hold: null };
+  if (local.mode === 'voice' || remote.mode === 'voice') {
+    if (remote.mode !== local.mode || remote.voiceEpoch !== local.voiceEpoch || !remote.playing) return { next: remote, hold: null };
+    if (remote.revision < local.revision) return { next: { ...local, voiceStatus: remote.voiceStatus, speed: remote.speed }, hold: null };
+    if (remote.position < local.position - 0.01) return { next: { ...remote, position: local.position, updatedAt: local.updatedAt }, hold: null };
+    return { next: remote, hold: null };
+  }
   const localPos = positionAt(local, now);
   const remotePos = positionAt(remote, now);
   const delta = Math.abs(localPos - remotePos);

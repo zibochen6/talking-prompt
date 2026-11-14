@@ -63,6 +63,27 @@ test('其他设备的大幅定位会立即跟上，附近的暂停不回跳', ()
   assert.ok(Math.abs(paused.next.position - 30) < 0.01);
 });
 
+test('声控播放接受向前的新位置，旧时钟不能把位置拉回去', () => {
+  const local = state({ mode: 'voice', voiceEpoch: 4, position: 20, playing: true, updatedAt: 500, revision: 12 });
+  const forward = foldRemote(local, state({ mode: 'voice', voiceEpoch: 4, position: 24, playing: true, updatedAt: 800, revision: 13, voiceStatus: 'matched' }), null, 800);
+  assert.equal(forward.next.position, 24);
+  assert.equal(forward.next.voiceStatus, 'matched');
+  const stale = foldRemote(forward.next, state({ mode: 'voice', voiceEpoch: 4, position: 21, playing: true, updatedAt: 900, revision: 12 }), null, 900);
+  assert.equal(stale.next.position, 24);
+  const reset = foldRemote(forward.next, state({ mode: 'voice', voiceEpoch: 5, position: 0, playing: true, updatedAt: 1000, revision: 14 }), null, 1000);
+  assert.equal(reset.next.position, 0);
+  assert.equal(reset.next.voiceEpoch, 5);
+});
+
+test('拖动时声控回声也不能改写本地位置', () => {
+  const local = state({ mode: 'voice', voiceEpoch: 3, position: 50, playing: false, updatedAt: 400 });
+  const hold: ScrubHold = { position: 50, revision: 10, active: true };
+  const echo = foldRemote(local, state({ mode: 'voice', voiceEpoch: 4, position: 18, playing: true, revision: 11, voiceStatus: 'matched' }), hold, 400);
+  assert.equal(echo.next.position, 50);
+  assert.equal(echo.next.playing, false);
+  assert.equal(echo.hold?.active, true);
+});
+
 test('松手后若最终回声丢失，超时后跟随服务器', () => {
   const local = state({ position: 70, playing: false, updatedAt: 800 });
   const hold: ScrubHold = { position: 70, revision: 10, active: false };

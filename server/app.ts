@@ -3,13 +3,15 @@ import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync, createR
 import { resolve, extname, sep } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { WebSocketServer, WebSocket } from 'ws';
-import { initialState, restoreState, settled, applyCommand } from '../shared/state.ts';
+import { initialState, restoreState, settled, applyCommand, setFollowMode as applyFollowMode, reportVoicePosition, setVoiceStatus as applyVoiceStatus, type FollowMode, type PromptState, type VoiceStatus } from '../shared/state.ts';
 
 export function createPromptServer(options: { dataDir: string; distDir: string; dev?: boolean }) {
   const statePath = resolve(options.dataDir, 'session.json');
   mkdirSync(options.dataDir, { recursive: true });
   let state = initialState();
   let warning = '';
+  let modeHost: ((mode: FollowMode) => void) | null = null;
+  const listeners = new Set<(current: PromptState) => void>();
   if (existsSync(statePath)) {
     try { state = restoreState(JSON.parse(readFileSync(statePath, 'utf8')), Date.now()); }
     catch (error) {
@@ -73,6 +75,11 @@ export function createPromptServer(options: { dataDir: string; distDir: string; 
   };
   function snapshot() { return { type: 'state', state: settled(state, Date.now()), serverTime: Date.now(), clients: wss.clients.size, warning }; }
   function broadcast() { const value = snapshot(); for (const ws of wss.clients) send(ws, value); }
+  function broadcastClock() {
+    const value = { type: 'clock', ...state, text: undefined, serverTime: Date.now(), clients: wss.clients.size, warning };
+    for (const ws of wss.clients) send(ws, value);
+  }
+  function notify() { for (const listener of [...listeners]) listener(state); }
   const alive = new WeakMap<WebSocket, boolean>();
   wss.on('connection', ws => {
     alive.set(ws, true);
@@ -82,11 +89,30 @@ export function createPromptServer(options: { dataDir: string; distDir: string; 
     ws.on('message', raw => {
       try {
         const command = JSON.parse(raw.toString());
+        if (!command || typeof command !== 'object') throw new Error('无法识别的操作');
         if (command.type === 'ping') return send(ws, { type: 'pong', clientTime: command.clientTime, serverTime: Date.now() });
         if (command.type === 'sync') return send(ws, snapshot());
+        // Phones may ask the desktop process to change mode. They cannot submit a position or a session.
+        if (command.type === 'preferMode') {
+          if (command.docRevision !== state.docRevision) throw new Error('文稿已更新，请等待同步后重试');
+          if (command.mode !== 'timed' && command.mode !== 'voice') throw new Error('无法识别的跟随方式');
+          if (command.mode === 'voice') {
+            if (!modeHost) throw new Error('声控跟随需要在 Mac 应用里使用');
+            modeHost('voice');
+            return;
+          }
+          if (modeHost) { modeHost('timed'); return; }
+          const timed = applyFollowMode(state, 'timed', Date.now());
+          if (timed !== state) { state = timed; persist(); broadcast(); notify(); }
+          return;
+        }
+        if (command.type === 'setMode' || command.type === 'voicePosition' || command.type === 'voiceSession' || command.type === 'voiceStatus') {
+          throw new Error('无法识别的操作');
+        }
         state = applyCommand(state, command, Date.now());
         persist();
         broadcast();
+        notify();
       } catch (error) {
         send(ws, { type: 'error', message: error instanceof Error ? error.message : '操作失败' });
         send(ws, snapshot());
@@ -110,6 +136,40 @@ export function createPromptServer(options: { dataDir: string; distDir: string; 
   return {
     server,
     setDevHandler(handler: typeof devHandler) { devHandler = handler; },
+    setModeHost(host: ((mode: FollowMode) => void) | null) { modeHost = host; },
+    getState() { return state; },
+    onState(listener: (current: PromptState) => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    setFollowMode(mode: FollowMode) {
+      const next = applyFollowMode(state, mode, Date.now());
+      if (next === state) return state;
+      state = next; persist(); broadcast(); notify();
+      return state;
+    },
+    submitVoicePosition(epoch: number, position: number) {
+      const next = reportVoicePosition(state, epoch, position, Date.now());
+      if (!next) return false;
+      state = next;
+      if (!state.playing) persist();
+      broadcastClock();
+      notify();
+      return true;
+    },
+    setVoiceStatus(status: VoiceStatus) {
+      const next = applyVoiceStatus(state, status);
+      if (!next) return false;
+      state = next;
+      broadcastClock();
+      notify();
+      return true;
+    },
+    localCommand(input: unknown) {
+      state = applyCommand(state, input, Date.now());
+      persist(); broadcast(); notify();
+      return state;
+    },
     async close() {
       clearInterval(interval); clearInterval(heartbeat); persist();
       for (const ws of wss.clients) ws.terminate();
