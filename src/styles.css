@@ -20,16 +20,21 @@
 .reading-settings-actions .secondary-button { width: auto; padding: 0 12px; height: 44px; }
 .reading-settings-actions .secondary-button span { display: inline; }
 
-.app[data-compact-landscape] {
+.app[data-reading-first] {
   min-height: 0;
-  padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  height: var(--vv-height, 100dvh);
+  padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+  transform: translateY(var(--vv-offset, 0px));
 }
-.app[data-compact-landscape] .topbar,
-.app[data-compact-landscape] .stage-meta,
-.app[data-compact-landscape] .stage-bottom,
-.app[data-compact-landscape] .control-dock,
-.app[data-compact-landscape] .page-note { display: none; }
-.app[data-compact-landscape] .stage { padding: 0; }
+.app[data-compact-landscape] {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+.app[data-reading-first] .topbar,
+.app[data-reading-first] .stage-meta,
+.app[data-reading-first] .stage-bottom,
+.app[data-reading-first] .control-dock,
+.app[data-reading-first] .page-note { display: none; }
+.app[data-reading-first] .stage { padding: 0; }
 .app[data-compact-landscape] .reader-viewport {
   mask-image: linear-gradient(to bottom, transparent, black 8px, black calc(100% - 8px), transparent);
   -webkit-mask-image: linear-gradient(to bottom, transparent, black 8px, black calc(100% - 8px), transparent);
@@ -45,7 +50,7 @@
 }
 .app[data-compact-landscape] .reader-content p { min-height: 1.4em; }
 .app[data-compact-landscape] .reading-marker { top: min(12%, 32px); left: 8px; }
-.app[data-compact-landscape] .landscape-toolbar {
+.app[data-reading-first] .landscape-toolbar {
   display: flex;
   flex: none;
   height: 56px;
@@ -76,7 +81,10 @@
 .landscape-progress { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 0 16px; }
 .landscape-progress input[type=range] { width: 100%; min-width: 0; height: 44px; }
 .landscape-progress output { flex: none; min-width: 40px; text-align: right; font-size: 11px; color: #a5b297; font-variant-numeric: tabular-nums; }
-.app[data-compact-landscape].immersive .landscape-toolbar { display: none; }
+.app[data-reading-first].immersive .landscape-toolbar { display: none; }
+.settings-label { display: none; }
+.toolbar-status { display: none; align-items: center; gap: 4px; flex: none; color: #9aa892; font-size: 10px; }
+.toolbar-status.offline { color: #e5b872; }
 .app[data-compact-landscape] .immersive-exit { top: max(8px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); }
 .app[data-compact-landscape] .dialog { max-height: calc(100dvh - 24px); padding: 24px; }
 .app[data-compact-landscape] .dialog-header { margin-bottom: 16px; }
@@ -95,3 +103,27 @@
 @media(max-width: 420px) {
   .reading-settings-grid { grid-template-columns: 1fr; gap: 16px; }
 }
+body { overscroll-behavior: none; background: #000; }
+button, .landscape-play, .landscape-icon-button, .landscape-settings-button { touch-action: manipulation; }
+.app[data-reading-first]:not([data-compact-landscape]) .toolbar-status { display: inline-flex; min-width: 12px; }
+.app[data-reading-first]:not([data-compact-landscape]) .settings-speed { display: none; }
+.app[data-reading-first]:not([data-compact-landscape]) .settings-label { display: inline; }
+.app[data-reading-first]:not([data-compact-landscape]) .landscape-toolbar {
+  flex-wrap: wrap;
+  height: auto;
+  justify-content: space-between;
+  padding: 2px 8px calc(6px + env(safe-area-inset-bottom));
+}
+.app[data-reading-first]:not([data-compact-landscape]) .landscape-progress {
+  order: -1;
+  flex: 1 0 100%;
+  height: 36px;
+  padding: 0 2px;
+}
+.app[data-reading-first]:not([data-compact-landscape]) .reader-viewport {
+  mask-image: linear-gradient(to bottom, transparent, black 4%, black 92%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 4%, black 92%, transparent);
+}
+.app[data-reading-first] .dialog { max-height: calc(var(--vv-height, 100dvh) - 16px); }
+.app[data-reading-first] .toast { bottom: calc(72px + env(safe-area-inset-bottom)); }
+.app[data-reading-first] .immersive-exit { top: max(8px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); }
